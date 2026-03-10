@@ -3,10 +3,7 @@ import os
 import sys
 
 # 資源清單
-datas_list = [
-    ('config.json', '.'),
-    ('opendata.csv', '.'),
-]
+datas_list = []
 
 app_name = 'OpendataUA-macos-onedir' if sys.platform == 'darwin' else 'OpendataUA-onedir'
 

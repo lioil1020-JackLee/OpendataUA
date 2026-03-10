@@ -143,6 +143,12 @@ def _center_over_master(win: tk.Misc, master: tk.Misc) -> None:
     win.geometry(f"{width}x{height}+{x}+{y}")
 
 
+def _hidden_subprocess_kwargs() -> dict:
+    if os.name != "nt":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+
+
 def _parse_opcua_url(url: str) -> tuple[str, int] | None:
     try:
         ep = urlparse(str(url).strip())
@@ -167,7 +173,13 @@ def _find_all_project_service_pids(repo_root: str) -> list[int]:
             "$procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine }; "
             "$procs | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"
         )
-        cp = subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=False, capture_output=True, text=True)
+        cp = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            check=False,
+            capture_output=True,
+            text=True,
+            **_hidden_subprocess_kwargs(),
+        )
         repo = os.path.normcase(os.path.abspath(repo_root)).replace("/", "\\")
         me = os.getpid()
         pids: list[int] = []
@@ -197,7 +209,12 @@ def _kill_pid(pid: int) -> None:
     if pid <= 0:
         return
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            check=False,
+            capture_output=True,
+            **_hidden_subprocess_kwargs(),
+        )
     else:
         os.kill(pid, signal.SIGTERM)
 
