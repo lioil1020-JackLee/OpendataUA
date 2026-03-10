@@ -13,6 +13,7 @@ import urllib.request as request
 from tkinter import font as tkfont
 from tkinter import ttk
 from urllib.parse import urlparse
+from datetime import datetime
 
 APP_TITLE = "OpenData Weather OPC UA"
 WINDOW_ICON_PATH: str | None = None
@@ -109,6 +110,16 @@ def _load_config(repo_root: str) -> dict:
 def _save_config(repo_root: str, cfg: dict) -> None:
     with open(_config_path(repo_root), "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=4)
+
+
+def _log_ui(message: str) -> None:
+    try:
+        log_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+        p = os.path.join(log_dir, "opendataua_ui.log")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat()}] {message}\n")
+    except Exception:
+        pass
 
 
 def _pick_python(repo_root: str) -> str:
@@ -269,9 +280,21 @@ def _fetch_values(cfg: dict, station_ids: list[str]) -> dict[str, dict[str, str]
     url = f"{addr}{api}?Authorization={auth}&format=JSON&StationId={qid}&WeatherElement=&GeoInfo=StationAltitude,CountyName"
     try:
         with request.urlopen(url, timeout=6) as resp:
+            try:
+                status = getattr(resp, "status", None)
+            except Exception:
+                status = None
             payload = json.load(resp)
         rows = payload.get("records", {}).get("Station", [])
+        try:
+            _log_ui(f"_fetch_values: url={url} status={status} records={len(rows)}")
+        except Exception:
+            pass
     except Exception:
+        try:
+            _log_ui(f"_fetch_values failed fetching URL: {url} error={repr(Exception)}")
+        except Exception:
+            pass
         return {}
 
     out: dict[str, dict[str, str]] = {}

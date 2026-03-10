@@ -4,6 +4,11 @@ import sys
 
 
 def repo_root() -> str:
+    # When packaged as a frozen executable (PyInstaller), prefer the
+    # directory of the executable so config files are created next to
+    # the exe instead of the temporary extraction folder.
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
 

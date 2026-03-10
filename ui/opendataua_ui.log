@@ -1,0 +1,1 @@
+[2026-03-10T20:57:25.444240] _fetch_values: url=https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=CWB-448F9C5A-3C92-44BF-8FD0-D57CE12F7FA5&format=JSON&StationId=466900,466920,467050,467571,467441&WeatherElement=&GeoInfo=StationAltitude,CountyName status=200 records=5

@@ -337,10 +337,19 @@ def main(config_path: str) -> int:
     except KeyboardInterrupt:
         return 0
     except Exception as e:
+        try:
+            log_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            with open(os.path.join(log_dir, "opendataua_server.log"), "a", encoding="utf-8") as lf:
+                lf.write(f"[{datetime.now().isoformat()}] OPC UA server fatal error: {e}\n")
+        except Exception:
+            pass
         print(f"OPC UA server fatal error: {e}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":
-    cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+    if getattr(sys, "frozen", False):
+        cfg = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "config.json")
+    else:
+        cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
     raise SystemExit(main(config_path=cfg))
