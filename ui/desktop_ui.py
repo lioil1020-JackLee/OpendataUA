@@ -153,6 +153,48 @@ def _log_ui(message: str) -> None:
         pass
 
 
+def _format_datetime_str(s: str) -> str:
+    """If s is an ISO datetime, return formatted 'yyyy-MM-dd HH:mm:ss', else return s."""
+    if not s or not isinstance(s, str):
+        return s
+    s = s.strip()
+    # quick reject common non-datetime values
+    if not ("-" in s and ":" in s):
+        return s
+    try:
+        # datetime.fromisoformat handles offsets like +08:00
+        dt = datetime.fromisoformat(s)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        # try parsing naive fallback: remove timezone Z or offsets
+        try:
+            # strip timezone offset like +08:00 or Z
+            if s.endswith("Z"):
+                s2 = s[:-1]
+            else:
+                # remove +HH:MM or -HH:MM
+                if "+" in s[10:] or "-" in s[10:]:
+                    # split at + or - after date part
+                    for idx in (s.find("+", 10), s.find("-", 10)):
+                        if idx and idx > 10:
+                            s2 = s[:idx]
+                            break
+                    else:
+                        s2 = s
+                else:
+                    s2 = s
+            # try common formats
+            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    dt = datetime.strptime(s2, fmt)
+                    return dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    return s
+
+
 def _pick_python(repo_root: str) -> str:
     if getattr(sys, "frozen", False):
         return sys.executable
@@ -635,7 +677,7 @@ class DesktopApp:
                 card = ttk.Frame(tab, padding=(8, 6))
                 card.grid(row=r, column=c, sticky="nsew", padx=6, pady=5)
 
-                text = str(vals.get(tag, "")).strip()
+                text = _format_datetime_str(str(vals.get(tag, "")).strip())
                 if text and unit:
                     text = f"{text} {unit}"
 
