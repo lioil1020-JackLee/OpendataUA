@@ -132,6 +132,17 @@ def _apply_window_icon(win: tk.Misc) -> None:
         pass
 
 
+def _center_over_master(win: tk.Misc, master: tk.Misc) -> None:
+    master.winfo_toplevel().update_idletasks()
+    win.update_idletasks()
+    m = master.winfo_toplevel()
+    width = win.winfo_reqwidth()
+    height = win.winfo_reqheight()
+    x = m.winfo_rootx() + (m.winfo_width() - width) // 2
+    y = m.winfo_rooty() + (m.winfo_height() - height) // 2
+    win.geometry(f"{width}x{height}+{x}+{y}")
+
+
 def _parse_opcua_url(url: str) -> tuple[str, int] | None:
     try:
         ep = urlparse(str(url).strip())
@@ -284,6 +295,7 @@ def _fetch_values(cfg: dict, station_ids: list[str]) -> dict[str, dict[str, str]
 class _StationDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, title: str, station_id: str = "", station_name: str = "") -> None:
         super().__init__(master)
+        self.withdraw()
         _apply_window_icon(self)
         self.title(title)
         self.resizable(False, False)
@@ -309,6 +321,8 @@ class _StationDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _e: self._cancel())
         self.bind("<Return>", lambda _e: self._ok())
         self.grab_set()
+        _center_over_master(self, master)
+        self.deiconify()
         self.id_ent.focus_set()
 
     def _ok(self) -> None:
@@ -327,6 +341,7 @@ class _StationDialog(tk.Toplevel):
 class _CenteredConfirmDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, title: str, message: str, ok_text: str = "確定", cancel_text: str = "取消") -> None:
         super().__init__(master)
+        self.withdraw()
         _apply_window_icon(self)
         self.title(title)
         self.resizable(False, False)
@@ -345,15 +360,8 @@ class _CenteredConfirmDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _e: self._cancel())
         self.bind("<Return>", lambda _e: self._ok())
         self.grab_set()
-
-        master.winfo_toplevel().update_idletasks()
-        self.update_idletasks()
-        m = master.winfo_toplevel()
-        width = self.winfo_reqwidth()
-        height = self.winfo_reqheight()
-        x = m.winfo_rootx() + (m.winfo_width() - width) // 2
-        y = m.winfo_rooty() + (m.winfo_height() - height) // 2
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        _center_over_master(self, master)
+        self.deiconify()
 
     def _ok(self) -> None:
         self.result = True
@@ -367,6 +375,7 @@ class _CenteredConfirmDialog(tk.Toplevel):
 class _SimpleMessageDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, title: str, message: str) -> None:
         super().__init__(master)
+        self.withdraw()
         _apply_window_icon(self)
         self.title(title)
         self.resizable(False, False)
@@ -380,15 +389,8 @@ class _SimpleMessageDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _e: self.destroy())
         self.bind("<Return>", lambda _e: self.destroy())
         self.grab_set()
-
-        master.winfo_toplevel().update_idletasks()
-        self.update_idletasks()
-        m = master.winfo_toplevel()
-        width = self.winfo_reqwidth()
-        height = self.winfo_reqheight()
-        x = m.winfo_rootx() + (m.winfo_width() - width) // 2
-        y = m.winfo_rooty() + (m.winfo_height() - height) // 2
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        _center_over_master(self, master)
+        self.deiconify()
 
     def show(self) -> None:
         self.wait_window(self)
@@ -399,6 +401,7 @@ class DesktopApp:
         global WINDOW_ICON_PATH
         self.repo_root = repo_root
         self.root = tk.Tk()
+        self.root.withdraw()
         self.root.title(APP_TITLE)
         self.root.minsize(900, 560)
         self._is_closing = False
@@ -444,6 +447,9 @@ class DesktopApp:
         self.root.after(200, self._start_services_async)
         self.root.after(100, self._poll_startup)
         self.root.after(1500, self._refresh_server_status)
+
+        self.root.deiconify()
+        self.root.lift()
 
     def _apply_theme(self) -> None:
         names = set(self._style.theme_names())
@@ -606,6 +612,7 @@ class DesktopApp:
 
     def _open_config_popup(self) -> None:
         dlg = tk.Toplevel(self.root)
+        dlg.withdraw()
         _apply_window_icon(dlg)
         dlg.title("Config")
         dlg.resizable(False, False)
@@ -655,6 +662,8 @@ class DesktopApp:
         x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
         y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
         dlg.geometry(f"{width}x{height}+{x}+{y}")
+        dlg.deiconify()
+        dlg.focus_force()
 
     def _on_add_station(self) -> None:
         dlg = _StationDialog(self.root, "Add Station")
