@@ -126,7 +126,8 @@ class _RemoteMirrorWriter:
         msg = str(message).strip()
         if msg and msg != self._last_error:
             self._last_error = msg
-            print(f"[mirror] {msg}", file=sys.stderr)
+            # intentionally silent: do not emit prints or logs in packaged exe
+            return
 
     async def _disconnect(self) -> None:
         c = self._client
@@ -335,7 +336,6 @@ async def run_server(config_path: str) -> int:
             loop.add_signal_handler(sig, _request_stop)
 
     async with server:
-        print(f"[{datetime.now().isoformat(timespec='seconds')}] OPC UA started at {endpoint} (bind={bind_ip})")
         while not stop_event.is_set():
             all_ids = sorted(set(list(station_nodes.keys()) + list(MIRROR_STATION_MAP.keys())))
             values = _fetch_values(cfg, all_ids)
@@ -354,8 +354,6 @@ async def run_server(config_path: str) -> int:
                 pass
 
     await mirror.close()
-
-    print(f"[{datetime.now().isoformat(timespec='seconds')}] OPC UA stopped")
     return 0
 
 
@@ -364,14 +362,8 @@ def main(config_path: str) -> int:
         return int(asyncio.run(run_server(config_path=config_path)))
     except KeyboardInterrupt:
         return 0
-    except Exception as e:
-        try:
-            log_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            with open(os.path.join(log_dir, "opendataua_server.log"), "a", encoding="utf-8") as lf:
-                lf.write(f"[{datetime.now().isoformat()}] OPC UA server fatal error: {e}\n")
-        except Exception:
-            pass
-        print(f"OPC UA server fatal error: {e}", file=sys.stderr)
+    except Exception:
+        # Silent failure: do not write logs or print to stderr in packaged exe
         return 1
 
 

@@ -954,6 +954,7 @@ class DesktopApp:
             self._load_station_cards()
         except Exception:
             # ignore refresh exceptions (no UI logging)
+            pass
         finally:
             try:
                 if self.root.winfo_exists() and not self._is_closing:

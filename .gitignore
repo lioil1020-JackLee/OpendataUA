@@ -3,12 +3,6 @@ __pycache__/
 *.py[oc]
 build/
 dist/
-wheels/
-*.egg-info
-*.out
-*.err
-*.pid
-.uv-cache/
 
 # Virtual environments
 .venv
