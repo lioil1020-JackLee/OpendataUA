@@ -15,6 +15,37 @@ from tkinter import ttk
 from urllib.parse import urlparse
 from datetime import datetime
 
+
+def _resolve_asset(name: str, repo_root: str | None = None) -> str:
+    """Return a filesystem path to a shipped asset (works when running frozen).
+
+    Search order:
+    - if frozen and sys._MEIPASS exists, look there
+    - if frozen, look next to sys.executable
+    - repo_root (if provided)
+    - current working directory
+    - fallback to given name (relative)
+    """
+    try:
+        if getattr(sys, "frozen", False):
+            # PyInstaller onefile extracts to _MEIPASS; on some setups use exe dir
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                p = os.path.join(meipass, name)
+                if os.path.exists(p):
+                    return p
+            p = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), name)
+            if os.path.exists(p):
+                return p
+    except Exception:
+        pass
+    if repo_root:
+        p = os.path.join(repo_root, name)
+        if os.path.exists(p):
+            return p
+    p = os.path.join(os.getcwd(), name)
+    return p
+
 APP_TITLE = "OpenData Weather OPC UA"
 WINDOW_ICON_PATH: str | None = None
 
@@ -453,7 +484,7 @@ class DesktopApp:
         self._tray_thread: threading.Thread | None = None
         self._in_tray = False
 
-        icon_path = os.path.join(repo_root, "lioil.ico")
+        icon_path = _resolve_asset("lioil.ico", repo_root)
         WINDOW_ICON_PATH = icon_path if os.path.exists(icon_path) else None
         if os.path.exists(icon_path):
             try:
@@ -771,7 +802,7 @@ class DesktopApp:
             return None
 
         img = None
-        icon_path = os.path.join(self.repo_root, "lioil.ico")
+        icon_path = _resolve_asset("lioil.ico", self.repo_root)
         if os.path.exists(icon_path):
             try:
                 with Image.open(icon_path) as ico:
