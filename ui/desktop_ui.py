@@ -15,6 +15,7 @@ from tkinter import ttk
 from urllib.parse import urlparse
 
 APP_TITLE = "OpenData Weather OPC UA"
+WINDOW_ICON_PATH: str | None = None
 
 VALUE_TAGS = [
     "24R",
@@ -111,6 +112,8 @@ def _save_config(repo_root: str, cfg: dict) -> None:
 
 
 def _pick_python(repo_root: str) -> str:
+    if getattr(sys, "frozen", False):
+        return sys.executable
     if os.name == "nt":
         py = os.path.join(repo_root, ".venv", "Scripts", "python.exe")
     else:
@@ -118,6 +121,15 @@ def _pick_python(repo_root: str) -> str:
     if os.path.exists(py):
         return py
     return sys.executable or "python"
+
+
+def _apply_window_icon(win: tk.Misc) -> None:
+    if not WINDOW_ICON_PATH or not os.path.exists(WINDOW_ICON_PATH):
+        return
+    try:
+        win.iconbitmap(WINDOW_ICON_PATH)
+    except Exception:
+        pass
 
 
 def _parse_opcua_url(url: str) -> tuple[str, int] | None:
@@ -141,11 +153,12 @@ def _is_port_open(host: str, port: int, timeout_sec: float = 0.5) -> bool:
 def _find_all_project_service_pids(repo_root: str) -> list[int]:
     try:
         ps = (
-            "$procs = Get-CimInstance Win32_Process | Where-Object { $_.Name -ieq 'python.exe' -and $_.CommandLine }; "
+            "$procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine }; "
             "$procs | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"
         )
         cp = subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=False, capture_output=True, text=True)
         repo = os.path.normcase(os.path.abspath(repo_root)).replace("/", "\\")
+        me = os.getpid()
         pids: list[int] = []
         for line in (cp.stdout or "").splitlines():
             line = line.strip()
@@ -153,9 +166,15 @@ def _find_all_project_service_pids(repo_root: str) -> list[int]:
                 continue
             pid_s, cmd = line.split("\t", 1)
             cmd_norm = os.path.normcase(cmd).replace("/", "\\")
-            if (repo in cmd_norm) and ("main.py" in cmd_norm) and (" server" in cmd_norm):
+            if (
+                (repo in cmd_norm)
+                and (" server" in cmd_norm)
+                and (("main.py" in cmd_norm) or ("opendataua" in cmd_norm))
+            ):
                 try:
-                    pids.append(int(pid_s.strip()))
+                    pid = int(pid_s.strip())
+                    if pid != me:
+                        pids.append(pid)
                 except Exception:
                     pass
         return sorted(set([p for p in pids if p > 0]))
@@ -179,8 +198,14 @@ def _cleanup_stale_services(repo_root: str) -> None:
 
 def _start_server_process(repo_root: str, wait_sec: float = 5.0) -> tuple[bool, str, subprocess.Popen | None]:
     py = _pick_python(repo_root)
-    args = [py, "-u", _main_path(repo_root), "server"]
-    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    if getattr(sys, "frozen", False):
+        args = [py, "server"]
+    else:
+        args = [py, "-u", _main_path(repo_root), "server"]
+
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     try:
         proc = subprocess.Popen(
@@ -259,6 +284,7 @@ def _fetch_values(cfg: dict, station_ids: list[str]) -> dict[str, dict[str, str]
 class _StationDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, title: str, station_id: str = "", station_name: str = "") -> None:
         super().__init__(master)
+        _apply_window_icon(self)
         self.title(title)
         self.resizable(False, False)
         self.result: dict[str, str] | None = None
@@ -301,6 +327,7 @@ class _StationDialog(tk.Toplevel):
 class _CenteredConfirmDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, title: str, message: str, ok_text: str = "確定", cancel_text: str = "取消") -> None:
         super().__init__(master)
+        _apply_window_icon(self)
         self.title(title)
         self.resizable(False, False)
         self.transient(master)
@@ -340,6 +367,7 @@ class _CenteredConfirmDialog(tk.Toplevel):
 class _SimpleMessageDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, title: str, message: str) -> None:
         super().__init__(master)
+        _apply_window_icon(self)
         self.title(title)
         self.resizable(False, False)
         self.transient(master)
@@ -368,6 +396,7 @@ class _SimpleMessageDialog(tk.Toplevel):
 
 class DesktopApp:
     def __init__(self, repo_root: str) -> None:
+        global WINDOW_ICON_PATH
         self.repo_root = repo_root
         self.root = tk.Tk()
         self.root.title(APP_TITLE)
@@ -382,6 +411,7 @@ class DesktopApp:
         self._in_tray = False
 
         icon_path = os.path.join(repo_root, "lioil.ico")
+        WINDOW_ICON_PATH = icon_path if os.path.exists(icon_path) else None
         if os.path.exists(icon_path):
             try:
                 self.root.iconbitmap(icon_path)
@@ -576,6 +606,7 @@ class DesktopApp:
 
     def _open_config_popup(self) -> None:
         dlg = tk.Toplevel(self.root)
+        _apply_window_icon(dlg)
         dlg.title("Config")
         dlg.resizable(False, False)
         dlg.transient(self.root)
@@ -782,7 +813,7 @@ class DesktopApp:
                     self.server_status_var.set(srv_msg)
                 else:
                     self.server_status_var.set(f"Server not running ({srv_msg})")
-                    _SimpleMessageDialog(self.root, "OPC UA", "OPC UA server failed to start. Please check port 48480.").show()
+                    _SimpleMessageDialog(self.root, "OPC UA", f"OPC UA server failed to start.\n{srv_msg}").show()
         except queue.Empty:
             pass
         finally:
