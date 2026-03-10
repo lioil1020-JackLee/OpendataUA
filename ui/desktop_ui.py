@@ -481,6 +481,8 @@ class DesktopApp:
         self._remove_button_focus_outline()
         self._build_ui()
         self._load_station_cards()
+        # Start periodic data refresh: first immediate (above), then every 10 seconds
+        self.root.after(10000, self._refresh_values)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close_request)
         self.root.bind("<Unmap>", self._on_root_unmap)
@@ -886,6 +888,24 @@ class DesktopApp:
             self.server_status_var.set("Server not running")
 
         self.root.after(2000, self._refresh_server_status)
+
+    def _refresh_values(self) -> None:
+        """Fetch latest REST values and re-render station cards, then reschedule."""
+        try:
+            if self._is_closing or not self.root.winfo_exists():
+                return
+            self._load_station_cards()
+        except Exception:
+            try:
+                _log_ui("_refresh_values: exception during refresh")
+            except Exception:
+                pass
+        finally:
+            try:
+                if self.root.winfo_exists() and not self._is_closing:
+                    self.root.after(10000, self._refresh_values)
+            except Exception:
+                pass
 
     def _on_close_request(self) -> None:
         ask = _CenteredConfirmDialog(self.root, "Exit", "確定要關閉程式？", ok_text="Exit", cancel_text="Cancel")
