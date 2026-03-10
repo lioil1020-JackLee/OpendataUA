@@ -143,15 +143,6 @@ def _save_config(repo_root: str, cfg: dict) -> None:
         json.dump(cfg, f, ensure_ascii=False, indent=4)
 
 
-def _log_ui(message: str) -> None:
-    try:
-        log_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
-        p = os.path.join(log_dir, "opendataua_ui.log")
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().isoformat()}] {message}\n")
-    except Exception:
-        pass
-
 
 def _format_datetime_str(s: str) -> str:
     """If s is an ISO datetime, return formatted 'yyyy-MM-dd HH:mm:ss', else return s."""
@@ -359,15 +350,8 @@ def _fetch_values(cfg: dict, station_ids: list[str]) -> dict[str, dict[str, str]
                 status = None
             payload = json.load(resp)
         rows = payload.get("records", {}).get("Station", [])
-        try:
-            _log_ui(f"_fetch_values: url={url} status={status} records={len(rows)}")
-        except Exception:
-            pass
+        # successful fetch; no UI log written
     except Exception:
-        try:
-            _log_ui(f"_fetch_values failed fetching URL: {url} error={repr(Exception)}")
-        except Exception:
-            pass
         return {}
 
     out: dict[str, dict[str, str]] = {}
@@ -969,10 +953,7 @@ class DesktopApp:
                 return
             self._load_station_cards()
         except Exception:
-            try:
-                _log_ui("_refresh_values: exception during refresh")
-            except Exception:
-                pass
+            # ignore refresh exceptions (no UI logging)
         finally:
             try:
                 if self.root.winfo_exists() and not self._is_closing:
