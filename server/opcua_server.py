@@ -67,6 +67,33 @@ def _default_config() -> dict:
     return deepcopy(DEFAULT_CONFIG)
 
 
+def _format_datetime_str(s: str) -> str:
+    """Format ISO-like datetime strings to 'yyyy-MM-dd HH:mm:ss'."""
+    if not s or not isinstance(s, str):
+        return s
+    s = s.strip()
+    if not ("-" in s and ":" in s):
+        return s
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        try:
+            if s.endswith("Z"):
+                s2 = s[:-1]
+            else:
+                s2 = s
+            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    dt = datetime.strptime(s2, fmt)
+                    return dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    return s
+
+
 def _save_config(config_path: str, cfg: dict) -> None:
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=4)
@@ -185,7 +212,7 @@ class _RemoteMirrorWriter:
                     continue
                 for tag, node in row_nodes.items():
                     try:
-                        raw = str(row.get(tag, ""))
+                        raw = _format_datetime_str(str(row.get(tag, "")))
                         casted = await self._coerce_value(node, raw)
                         if casted is None:
                             continue
@@ -316,7 +343,8 @@ async def run_server(config_path: str) -> int:
                 row = values.get(sid, {})
                 for tag, node in tag_nodes.items():
                     try:
-                        await node.write_value(str(row.get(tag, "")))
+                        val = _format_datetime_str(str(row.get(tag, "")))
+                        await node.write_value(val)
                     except Exception:
                         pass
             await mirror.write_values(values)
