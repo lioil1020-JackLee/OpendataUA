@@ -531,20 +531,24 @@ class DesktopApp:
         self._value_map: dict[str, dict[str, str]] = {}
         self._stations: list[dict[str, str]] = []
         self._startup_queue: queue.Queue[tuple[bool, str, subprocess.Popen | None]] = queue.Queue()
+        self._ui_queue: queue.Queue[tuple] = queue.Queue()
         self._startup_thread: threading.Thread | None = None
+        self._value_refresh_inflight = False
+        self._server_status_inflight = False
 
         self._style = ttk.Style(self.root)
         self._apply_theme()
         self._remove_button_focus_outline()
         self._build_ui()
         self._load_station_cards()
-        # Start periodic data refresh: first immediate (above), then every 10 seconds
-        self.root.after(10000, self._refresh_values)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close_request)
         self.root.bind("<Unmap>", self._on_root_unmap)
+        self.root.after(100, self._poll_ui_queue)
         self.root.after(200, self._start_services_async)
+        self.root.after(300, self._request_value_refresh)
         self.root.after(100, self._poll_startup)
+        self.root.after(10000, self._refresh_values)
         self.root.after(1500, self._refresh_server_status)
 
         self.root.deiconify()
@@ -622,6 +626,30 @@ class DesktopApp:
             return None
         return idx if 0 <= idx < len(self._stations) else None
 
+    def _stations_from_config(self) -> list[dict[str, str]]:
+        od = self.cfg.get("openData") or {}
+        stations = od.get("stations") or []
+        if not (isinstance(stations, list) and stations):
+            stations = [{"id": str(x), "name": ""} for x in (od.get("target") or [])]
+        return [
+            {"id": str((s or {}).get("id") or "").strip(), "name": str((s or {}).get("name") or "").strip()}
+            for s in stations
+            if isinstance(s, dict) and str((s or {}).get("id") or "").strip()
+        ]
+
+    def _current_stations_for_refresh(self) -> list[dict[str, str]]:
+        stations = self._stations_from_widgets()
+        return stations or self._stations_from_config()
+
+    def _runtime_cfg_snapshot(self, stations: list[dict[str, str]]) -> dict:
+        cfg = deepcopy(self.cfg)
+        cfg.setdefault("openData", {})
+        cfg.setdefault("opcUA", {})
+        cfg["openData"]["auth_key"] = self.auth_var.get().strip()
+        cfg["openData"]["stations"] = deepcopy(stations)
+        cfg["openData"]["target"] = [s["id"] for s in stations]
+        return cfg
+
     def _render_station_tabs(self, stations: list[dict]) -> None:
         current_sid = ""
         cur = self._current_station_index()
@@ -677,14 +705,7 @@ class DesktopApp:
             pass
 
     def _load_station_cards(self) -> None:
-        od = self.cfg.get("openData") or {}
-        stations = od.get("stations") or []
-        if not (isinstance(stations, list) and stations):
-            stations = [{"id": str(x), "name": ""} for x in (od.get("target") or [])]
-
-        ids = [str((s or {}).get("id") or "").strip() for s in stations if isinstance(s, dict)]
-        self._value_map = _fetch_values(self.cfg, ids)
-        self._render_station_tabs(stations)
+        self._render_station_tabs(self._current_stations_for_refresh())
 
     def _write_cfg_from_widgets(self) -> None:
         self.cfg.setdefault("openData", {})
@@ -744,6 +765,7 @@ class DesktopApp:
                 self._write_cfg_from_widgets()
                 _save_config(self.repo_root, self.cfg)
                 self._load_station_cards()
+                self._request_value_refresh()
             except Exception as e:
                 _SimpleMessageDialog(dlg, "Save", str(e)).show()
                 return
@@ -776,6 +798,7 @@ class DesktopApp:
                 return
         self._stations.append({"id": sid, "name": dlg.result.get("name", "")})
         self._render_station_tabs(self._stations)
+        self._request_value_refresh()
 
     def _on_edit_station(self) -> None:
         idx = self._current_station_index()
@@ -798,6 +821,7 @@ class DesktopApp:
 
         self._stations[idx] = {"id": new_sid, "name": dlg.result.get("name", "")}
         self._render_station_tabs(self._stations)
+        self._request_value_refresh()
 
     def _on_remove_station(self) -> None:
         idx = self._current_station_index()
@@ -810,6 +834,7 @@ class DesktopApp:
             return
         del self._stations[idx]
         self._render_station_tabs(self._stations)
+        self._request_value_refresh()
 
     def _on_root_unmap(self, _event=None) -> None:
         if self._handling_unmap or self._is_closing:
@@ -928,6 +953,50 @@ class DesktopApp:
             if self.root.winfo_exists() and not self._is_closing:
                 self.root.after(120, self._poll_startup)
 
+    def _poll_ui_queue(self) -> None:
+        try:
+            while True:
+                item = self._ui_queue.get_nowait()
+                kind = item[0]
+                if kind == "values":
+                    _kind, stations, value_map = item
+                    self._value_refresh_inflight = False
+                    if not self._is_closing and self.root.winfo_exists():
+                        self._value_map = value_map
+                        self._render_station_tabs(stations)
+                elif kind == "server_status":
+                    _kind, proc_running, pid, port_open = item
+                    self._server_status_inflight = False
+                    if proc_running:
+                        self.server_status_var.set(f"Server running (pid={pid})")
+                    elif port_open:
+                        self.server_status_var.set("Server running")
+                    else:
+                        self.server_status_var.set("Server not running")
+        except queue.Empty:
+            pass
+        finally:
+            try:
+                if self.root.winfo_exists() and not self._is_closing:
+                    self.root.after(100, self._poll_ui_queue)
+            except Exception:
+                pass
+
+    def _request_value_refresh(self) -> None:
+        if self._is_closing or not self.root.winfo_exists() or self._value_refresh_inflight:
+            return
+
+        stations = self._current_stations_for_refresh()
+        cfg_snapshot = self._runtime_cfg_snapshot(stations)
+        station_ids = [s["id"] for s in stations if s.get("id")]
+        self._value_refresh_inflight = True
+
+        def _worker() -> None:
+            value_map = _fetch_values(cfg_snapshot, station_ids)
+            self._ui_queue.put(("values", stations, value_map))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _refresh_server_status(self) -> None:
         if self._is_closing or not self.root.winfo_exists():
             return
@@ -935,23 +1004,23 @@ class DesktopApp:
         endpoint = str(((self.cfg.get("opcUA") or {}).get("url")) or "opc.tcp://127.0.0.1:48480")
         parsed = _parse_opcua_url(endpoint) or ("127.0.0.1", 48480)
         proc_running = bool(self._server_proc and self._server_proc.poll() is None)
-        port_open = _is_port_open(parsed[0], parsed[1])
+        pid = self._server_proc.pid if proc_running and self._server_proc is not None else None
+        if not self._server_status_inflight:
+            self._server_status_inflight = True
 
-        if proc_running:
-            self.server_status_var.set(f"Server running (pid={self._server_proc.pid})")
-        elif port_open:
-            self.server_status_var.set("Server running")
-        else:
-            self.server_status_var.set("Server not running")
+            def _worker() -> None:
+                port_open = _is_port_open(parsed[0], parsed[1])
+                self._ui_queue.put(("server_status", proc_running, pid, port_open))
+
+            threading.Thread(target=_worker, daemon=True).start()
 
         self.root.after(2000, self._refresh_server_status)
 
     def _refresh_values(self) -> None:
-        """Fetch latest REST values and re-render station cards, then reschedule."""
         try:
             if self._is_closing or not self.root.winfo_exists():
                 return
-            self._load_station_cards()
+            self._request_value_refresh()
         except Exception:
             # ignore refresh exceptions (no UI logging)
             pass

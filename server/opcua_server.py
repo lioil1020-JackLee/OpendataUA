@@ -345,7 +345,7 @@ async def run_server(config_path: str) -> int:
     async with server:
         while not stop_event.is_set():
             all_ids = sorted(set(list(station_nodes.keys()) + list(MIRROR_STATION_MAP.keys())))
-            values = _fetch_values(cfg, all_ids)
+            values = await asyncio.to_thread(_fetch_values, cfg, all_ids)
             for sid, tag_nodes in station_nodes.items():
                 row = values.get(sid, {})
                 for tag, node in tag_nodes.items():
