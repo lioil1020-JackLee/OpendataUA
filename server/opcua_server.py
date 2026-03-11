@@ -141,7 +141,12 @@ class _RemoteMirrorWriter:
 
     async def _connect_if_needed(self) -> bool:
         if self._client is not None:
-            return True
+            try:
+                await self._client.check_connection()
+                return True
+            except Exception as e:
+                self._report_error(f"connection check failed: {e}")
+                await self._disconnect()
         try:
             self._client = Client(url=self.endpoint)
             await self._client.connect()
@@ -226,10 +231,12 @@ class _RemoteMirrorWriter:
                             ServerPicoseconds=None,
                         )
                         await node.write_attribute(ua.AttributeIds.Value, dv)
-                    except Exception:
-                        continue
-        except Exception:
-            self._report_error("write loop failed; reconnecting")
+                    except Exception as e:
+                        self._report_error(f"write failed: sid={sid} tag={tag} err={e}")
+                        await self._disconnect()
+                        return
+        except Exception as e:
+            self._report_error(f"write loop failed: {e}")
             await self._disconnect()
 
     async def close(self) -> None:
