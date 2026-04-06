@@ -37,7 +37,8 @@ jobs:
         shell: bash
         run: |
           uv venv
-          uv pip install --python .venv -r requirements.txt pyinstaller
+          uv sync --locked
+          uv pip install --python .venv pyinstaller
 
       # --- Windows 編譯與打包 ---
       - name: Build (Windows)
