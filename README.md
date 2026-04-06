@@ -35,7 +35,7 @@
 cd E:\py\opendata_weather_ua
 uv venv .venv
 .\.venv\Scripts\Activate.ps1
-uv pip install --python .\.venv\Scripts\python.exe -r requirements.txt
+uv sync --locked
 ```
 
 ## 執行
@@ -44,19 +44,25 @@ uv pip install --python .\.venv\Scripts\python.exe -r requirements.txt
 
 ```powershell
 cd E:\py\opendata_weather_ua
-.\.venv\Scripts\python.exe .\main.py
+uv run python .\main.py
 ```
 
 或明確指定：
 
 ```powershell
-.\.venv\Scripts\python.exe .\main.py ui
+uv run python .\main.py ui
+```
+
+啟動後自動縮到系統列：
+
+```powershell
+uv run python .\main.py -min
 ```
 
 只啟動 OPC UA Server：
 
 ```powershell
-.\.venv\Scripts\python.exe .\main.py server
+uv run python .\main.py server
 ```
 
 ## OPC UA 設定
