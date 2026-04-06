@@ -1,59 +1,59 @@
 # OpenData Weather UA
 
-以桌面 UI 管理測站清單與 API 金鑰，並提供本機 OPC UA 服務給 SCADA/UAExpert 讀取。
+OpenData Weather UA 是一個桌面天氣監看工具，會讀取中央氣象署 OpenData 測站資料，並同步提供本機 OPC UA Server，方便用 SCADA、UAExpert 等 OPC UA Client 連線。
 
-## 功能
+## 專案分析
 
-- 桌面 UI（Tkinter）
-- 測站新增、編輯、刪除
-- 顯示中央氣象署開放資料欄位
-- 啟動時自動帶起 OPC UA Server
-- 視窗最小化時縮到系統列（tray）
-- 右上角 `X` 會跳出置中確認視窗
-- 關閉主程式時會一併停止 OPC UA Server
-- 不產生 `log / err / out / pid` 類暫存檔
-- `config.json` 不存在時自動產生內建預設設定
+- `main.py` 是入口，支援 `ui` 與 `server` 兩種模式；未帶參數時預設啟動桌面 UI。
+- `ui/desktop_ui.py` 提供 Tkinter 桌面介面，內含站點管理、系統匣最小化、設定編輯，以及背景啟動 OPC UA Server。
+- `server/opcua_server.py` 負責抓取 OpenData 測站資料、建立 OPC UA 節點，並定時更新數值。
+- `config.json` 是執行期設定檔；若不存在，程式會自動建立預設值。
+- 打包採用 PyInstaller，規格檔為 `OpendataUA-onedir.spec` 與 `OpendataUA-onefile.spec`。
 
-## 專案結構
+## 依賴管理
 
-`main.py`：CLI 入口（`ui` / `server`）
+本專案已改為由 `uv` 完整管理依賴：
 
-`ui/desktop_ui.py`：桌面 UI、tray、啟停 server
-
-`server/opcua_server.py`：OPC UA 服務與資料同步
-
-`config.json`：資料來源、測站與 OPC UA 端點設定
+- 執行期依賴定義於 `pyproject.toml`
+- 建置依賴定義於 `pyproject.toml` 的 `build` dependency group
+- 鎖定版本由 `uv.lock` 管理
+- CI/CD 與本機打包都使用 `uv sync` / `uv run`
 
 ## 環境需求
 
-- Windows 10/11（建議）
 - Python 3.12+
+- Windows 10/11 或 macOS
+- 已安裝 `uv`
 
 ## 安裝
 
+一般執行環境：
+
 ```powershell
-cd E:\py\opendata_weather_ua
-uv venv .venv
-.\.venv\Scripts\Activate.ps1
 uv sync --locked
+```
+
+若需要打包：
+
+```powershell
+uv sync --locked --group build
 ```
 
 ## 執行
 
-啟動桌面 UI（預設）：
+啟動桌面 UI：
 
 ```powershell
-cd E:\py\opendata_weather_ua
 uv run python .\main.py
 ```
 
-或明確指定：
+明確指定 UI 模式：
 
 ```powershell
 uv run python .\main.py ui
 ```
 
-啟動後自動縮到系統列：
+啟動時最小化到系統匣：
 
 ```powershell
 uv run python .\main.py -min
@@ -65,46 +65,59 @@ uv run python .\main.py -min
 uv run python .\main.py server
 ```
 
-## OPC UA 設定
+## 打包
+
+Windows 或 macOS 的 PyInstaller 打包也由 `uv` 管理：
+
+```powershell
+uv run --group build pyinstaller .\OpendataUA-onedir.spec
+uv run --group build pyinstaller .\OpendataUA-onefile.spec
+```
+
+如果環境已先執行過 `uv sync --locked --group build`，也可以使用：
+
+```powershell
+uv run --locked --no-sync pyinstaller .\OpendataUA-onedir.spec
+```
+
+## OPC UA 預設設定
 
 預設 endpoint 來自 `config.json`：
 
-`opc.tcp://127.0.0.1:48480`（可在 UI 的 Config 變更）
+```text
+opc.tcp://127.0.0.1:48480
+```
 
-UAExpert 建議：
+使用 UAExpert 連線時可採用：
 
 - Security Mode: `None`
 - Security Policy: `None`
 - User: `Anonymous`
 
-遠端鏡射（固定啟用）：
-
-- 端點：`opc.tcp://lioil.ddnsfree.com:48484`
-- 測站映射：`466900->W466900`、`466920->W466920`、`467050->W467050`、`467571->W467571`、`467441->W467441`
-
-## 設定檔說明
+## 設定檔
 
 `config.json` 主要欄位：
 
-- `openData.address`：氣象資料 API 主機
-- `openData.api`：資料集代碼（例如 `O-A0003-001`）
-- `openData.auth_key`：授權碼
-- `openData.stations`：測站陣列（`id`, `name`）
+- `openData.address`：OpenData API 基底網址
+- `openData.api`：資料集代碼，預設為 `O-A0003-001`
+- `openData.auth_key`：OpenData 授權金鑰
+- `openData.stations`：測站清單，格式為 `id` 與 `name`
 - `opcUA.url`：OPC UA endpoint
-- `opcUA.bind_ip`：可選，指定綁定 IP
+- `opcUA.bind_ip`：伺服器綁定 IP，可選
 
 ## 常見問題
 
-若最小化沒有進系統列：
+系統匣功能無法使用時：
 
-- 請確認已安裝 `pystray` 與 `Pillow`
-- 某些系統可能把 tray icon 折疊在隱藏圖示中
+- 確認已安裝 `pystray` 與 `pillow`
+- 某些桌面環境可能不支援 tray icon，程式會退回一般視窗最小化行為
 
-若 OPC UA 啟動失敗：
+OPC UA 無法連線時：
 
-- 檢查 `48480` 是否被其他程式占用
 - 確認 `config.json` 的 `opcUA.url` 格式正確
+- 確認對應埠號未被其他程式占用
 
 ## 開發備註
 
-- 本專案目前為桌面版流程，不包含 web UI。
+- 請以 `uv add`、`uv remove`、`uv lock` 維護依賴，不再使用 `requirements.txt`
+- 若有調整 `pyproject.toml`，請一併更新 `uv.lock`

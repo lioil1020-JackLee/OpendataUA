@@ -2,9 +2,9 @@ name: Build and Release OpendataUA
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ] # 當你推送如 v1.0.3 的標籤時，才會執行 Release 步驟
-  workflow_dispatch: # 支援從 Actions 頁面手動點擊執行
+    branches: ["main"]
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -34,40 +34,31 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        shell: bash
-        run: |
-          uv venv
-          uv sync --locked
-          uv pip install --python .venv pyinstaller
+        run: uv sync --locked --group build
 
-      # --- Windows 編譯與打包 ---
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          uv run --no-sync pyinstaller OpendataUA-${{ matrix.build_type }}.spec
+          uv run --locked --no-sync pyinstaller OpendataUA-${{ matrix.build_type }}.spec
           if ("${{ matrix.build_type }}" -eq "onedir") {
             cd dist
-            # 自動抓取編譯出的資料夾並壓縮，解決 476 個檔案上傳失敗的問題
             $target = Get-ChildItem -Directory | Select-Object -First 1 -ExpandProperty Name
             Compress-Archive -Path "$target" -DestinationPath "OpendataUA-Windows-onedir.zip" -Force
           }
 
-      # --- macOS 編譯與打包 ---
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          uv run --no-sync pyinstaller OpendataUA-${{ matrix.build_type }}.spec
+          uv run --locked --no-sync pyinstaller OpendataUA-${{ matrix.build_type }}.spec
           cd dist
-          if [ "${{ matrix.build_type }}" == "onedir" ]; then
-            # macOS onedir 產出的是 .app 或資料夾
-            targetDir=$(find . -maxdepth 1 -type d -not -path "." | head -n 1)
-            zip -r OpendataUA-macOS-onedir.zip "$targetDir"
+          if [ "${{ matrix.build_type }}" = "onedir" ]; then
+            target_dir=$(find . -maxdepth 1 -type d -not -path "." | head -n 1)
+            zip -r OpendataUA-macOS-onedir.zip "$target_dir"
           else
-            # onefile 產出的是單一檔案
-            targetFile=$(find . -maxdepth 1 -type f -not -name "*.zip" | head -n 1)
-            zip OpendataUA-macOS-onefile.zip "$targetFile"
+            target_file=$(find . -maxdepth 1 -type f -not -name "*.zip" | head -n 1)
+            zip OpendataUA-macOS-onefile.zip "$target_file"
           fi
 
       - name: Upload Artifact
@@ -81,9 +72,9 @@ jobs:
   release:
     name: Create Release
     needs: build
-    # 重要：只有當推送標籤或手動觸發時，才會真的建立 Release
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -94,7 +85,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p final_assets
-          # 只抓取 zip 和 exe，避開資料夾內的雜碎檔案
           find raw_artifacts -type f \( -name "OpendataUA-*.zip" -o -name "OpendataUA-*.exe" \) -exec cp {} final_assets/ \;
           ls -lh final_assets/
 
