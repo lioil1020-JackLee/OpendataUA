@@ -29,7 +29,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="opendata-weather-ua")
     sub = parser.add_subparsers(dest="cmd")
 
-    sub.add_parser("ui", help="Run desktop UI")
+    p_ui = sub.add_parser("ui", help="Run desktop UI")
+    p_ui.add_argument(
+        "-min",
+        "--minimized",
+        action="store_true",
+        help="Start the desktop UI minimized to the system tray",
+    )
 
     p_srv = sub.add_parser("server", help="Run OPC UA server")
     p_srv.add_argument("--config", default=os.path.join(repo_root(), "config.json"))
@@ -41,7 +47,10 @@ def main(argv: list[str] | None = None) -> int:
         from ui.desktop_ui import main as desktop_main
 
         try:
-            desktop_main(repo_root=repo_root())
+            desktop_main(
+                repo_root=repo_root(),
+                start_minimized=bool(getattr(args, "minimized", False)),
+            )
         except KeyboardInterrupt:
             # GUI mode should exit quietly even if console sends an interrupt event.
             return 0

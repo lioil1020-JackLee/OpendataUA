@@ -494,9 +494,10 @@ class _SimpleMessageDialog(tk.Toplevel):
 
 
 class DesktopApp:
-    def __init__(self, repo_root: str) -> None:
+    def __init__(self, repo_root: str, *, start_minimized: bool = False) -> None:
         global WINDOW_ICON_PATH
         self.repo_root = repo_root
+        self.start_minimized = start_minimized
         self.root = tk.Tk()
         self.root.withdraw()
         self.root.title(APP_TITLE)
@@ -553,6 +554,8 @@ class DesktopApp:
 
         self.root.deiconify()
         self.root.lift()
+        if self.start_minimized:
+            self.root.after(250, self._apply_startup_minimize)
 
     def _apply_theme(self) -> None:
         names = set(self._style.theme_names())
@@ -901,6 +904,16 @@ class DesktopApp:
         self._tray_thread = threading.Thread(target=_run_icon, daemon=True)
         self._tray_thread.start()
 
+    def _apply_startup_minimize(self) -> None:
+        if self._is_closing or not self.root.winfo_exists():
+            return
+        self._minimize_to_tray()
+        if not self._in_tray:
+            try:
+                self.root.iconify()
+            except Exception:
+                pass
+
     def _restore_from_tray(self) -> None:
         if self._tray_icon is not None:
             try:
@@ -1100,13 +1113,13 @@ class DesktopApp:
             self._force_close()
 
 
-def main(*, repo_root: str) -> None:
+def main(*, repo_root: str, start_minimized: bool = False) -> None:
     if os.name == "nt":
         try:
             signal.signal(signal.SIGINT, signal.SIG_IGN)
         except Exception:
             pass
-    DesktopApp(repo_root=repo_root).run()
+    DesktopApp(repo_root=repo_root, start_minimized=start_minimized).run()
 
 
 if __name__ == "__main__":
